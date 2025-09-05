@@ -12,7 +12,8 @@
     "deploy": "node scripts/deploy.js",
     "deploy:railway": "node scripts/deploy.js railway",
     "deploy:heroku": "node scripts/deploy.js heroku",
-    "deploy:vercel": "node scripts/deploy.js vercel"
+    "deploy:vercel": "node scripts/deploy.js vercel",
+    "deploy:render": "echo 'Deploy to Render by connecting your GitHub repository at https://render.com'"
   },
   "keywords": [],
   "author": "",

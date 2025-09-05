@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: aura-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        fromDatabase:
+          name: aura-mongodb
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        value: sacred-age-457512-c3
+      - key: FIREBASE_MESSAGING_SENDER_ID
+        value: "591319256085"
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: "100"
+      - key: HELMET_ENABLED
+        value: "true"
+      - key: TRUST_PROXY
+        value: "true"
+
+databases:
+  - name: aura-mongodb
+    plan: free
