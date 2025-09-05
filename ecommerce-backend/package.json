@@ -1,0 +1,44 @@
+{
+  "name": "ecommerce-backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "build": "echo 'No build step required for Node.js'",
+    "docker:build": "docker build -t aura-backend .",
+    "docker:run": "docker run -p 5000:5000 --env-file .env.production aura-backend",
+    "deploy": "node scripts/deploy.js",
+    "deploy:railway": "node scripts/deploy.js railway",
+    "deploy:heroku": "node scripts/deploy.js heroku",
+    "deploy:vercel": "node scripts/deploy.js vercel"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "axios": "^1.11.0",
+    "bcryptjs": "^3.0.2",
+    "cloudinary": "^2.7.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.0.1",
+    "express-validator": "^7.2.1",
+    "firebase-admin": "^13.5.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.18.0",
+    "multer": "^2.0.2",
+    "node-fetch": "^3.3.2",
+    "paystack": "^2.0.1",
+    "socket.io": "^4.8.1",
+    "stripe": "^18.4.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
