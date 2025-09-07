@@ -41,6 +41,9 @@ const notificationRoutes = require("./routes/notification.routes");
 // Import auth middleware
 const { authMiddleware } = require("./middlewares/auth.middleware");
 
+// Import Firebase initialization
+const { initializeFirebase } = require("./services/pushNotification.service");
+
 // Load environment variables
 dotenv.config({ path: process.env.NODE_ENV === 'production' ? '.env.production' : '.env' });
 
@@ -605,6 +608,10 @@ app.use("*", (req, res) => {
 
 // Database Connection
 connectDB();
+
+// Initialize Firebase Admin SDK
+console.log('🔧 Initializing Firebase Admin SDK...');
+initializeFirebase();
 
 // Start Server
 const PORT = process.env.PORT || 5000;
