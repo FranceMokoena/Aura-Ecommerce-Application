@@ -58,7 +58,25 @@ const notificationSchema = new mongoose.Schema({
       'seeker_new_booking',      // New service booking
       'seeker_booking_confirmed', // Booking confirmed
       'seeker_booking_cancelled', // Booking cancelled
-      'seeker_service_completed'  // Service completed
+      'seeker_service_completed',  // Service completed
+
+      // Additional types
+      'order_update',           // Order updates
+      'customer_order_updated',  // Customer order updates
+
+      // Newly added types
+      'order_pending',
+      'order_confirmed',
+      'order_shipped',
+      'order_delivered',
+      'order_cancelled',
+      'seller_new_review',
+      'seller_inventory_alert',
+      'seeker_payment_received',
+      'seeker_service_update',
+      'system_maintenance',
+      'security_alert',
+      'promotional'
     ],
     required: true,
     index: true

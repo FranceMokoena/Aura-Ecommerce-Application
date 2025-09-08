@@ -34,6 +34,7 @@ const shopOrderRoutes = require("./routes/shopOrder.routes");
 
 // Notification routes (NEW - SAFE ADDITION)
 const notificationRoutes = require("./routes/notification.routes");
+const testNotificationRoutes = require("./routes/test-notification.routes");
 
 // Import AURA Payment System - TEMPORARILY DISABLED
 // const { integratePaymentSystem } = require("./payment-system/integration");

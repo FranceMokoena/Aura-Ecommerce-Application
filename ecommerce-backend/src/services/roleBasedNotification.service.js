@@ -12,33 +12,111 @@ const Notification = require('../models/Notification');
 
 // Customer Order Status Notifications
 const sendCustomerOrderNotification = async (customerId, orderStatus, orderData) => {
-  let type;
-  switch (orderStatus) {
-    case 'confirmed':
-      type = 'order_confirmed';
-      break;
-    case 'shipped':
-      type = 'order_shipped';
-      break;
-    case 'delivered':
-      type = 'order_delivered';
-      break;
-    case 'cancelled':
-      type = 'order_cancelled';
-      break;
-    default:
-      type = 'order_update';
+  try {
+    console.log('🔔 === CUSTOMER ORDER NOTIFICATION DEBUG START ===');
+    console.log('🔔 sendCustomerOrderNotification called with:', { customerId, orderStatus, orderData });
+    
+    const customer = await User.findById(customerId);
+    console.log('🔔 Customer found:', customer ? { 
+      id: customer._id, 
+      name: customer.name, 
+      hasPushToken: !!customer.pushToken,
+      pushToken: customer.pushToken ? `${customer.pushToken.substring(0, 20)}...` : 'NO TOKEN'
+    } : 'NOT FOUND');
+    
+    if (!customer) {
+      console.error('❌ Customer not found with ID:', customerId);
+      console.log('🔔 === CUSTOMER ORDER NOTIFICATION DEBUG END ===');
+      return;
+    }
+
+    let type;
+    let title;
+    let message;
+    
+    switch (orderStatus) {
+      case 'pending':
+        type = 'order_pending';
+        title = '📋 Order Received';
+        message = `Your order #${orderData.orderNumber || orderData.orderId?.slice(-6)} has been received and is being processed`;
+        break;
+      case 'confirmed':
+        type = 'order_confirmed';
+        title = '✅ Order Confirmed';
+        message = `Your order #${orderData.orderNumber || orderData.orderId?.slice(-6)} has been confirmed by the seller`;
+        break;
+      case 'shipped':
+        type = 'order_shipped';
+        title = '📦 Order Shipped';
+        message = `Your order #${orderData.orderNumber || orderData.orderId?.slice(-6)} has been shipped and is on its way`;
+        break;
+      case 'delivered':
+        type = 'order_delivered';
+        title = '🎉 Order Delivered';
+        message = `Your order #${orderData.orderNumber || orderData.orderId?.slice(-6)} has been delivered successfully`;
+        break;
+      case 'cancelled':
+        type = 'order_cancelled';
+        title = '❌ Order Cancelled';
+        message = `Your order #${orderData.orderNumber || orderData.orderId?.slice(-6)} has been cancelled`;
+        break;
+      default:
+        type = 'order_update';
+        title = '📋 Order Update';
+        message = `Your order status has been updated to ${orderStatus}`;
+    }
+
+    // Send push notification if user has push token
+    if (customer.pushToken) {
+      console.log('🔔 Sending push notification to customer:', { 
+        customerId, 
+        customerName: customer.name,
+        pushToken: `${customer.pushToken.substring(0, 20)}...` 
+      });
+      
+      await sendPushNotification(customer.pushToken, {
+        title: title,
+        message: message,
+        data: {
+          type: type,
+          orderId: orderData.orderId,
+          orderNumber: orderData.orderNumber,
+          status: orderStatus,
+          totalAmount: orderData.totalAmount
+        }
+      });
+      
+      console.log('✅ Push notification sent to customer successfully');
+    } else {
+      console.log('⚠️ Customer has no push token, skipping push notification');
+    }
+
+    // Store notification in database
+    const notification = new Notification({
+      userId: customerId,
+      type,
+      title: title,
+      message: message,
+      data: orderData,
+      read: false,
+    });
+    
+    await notification.save();
+    console.log('✅ Notification stored in database for customer');
+    
+    console.log(`✅ Customer order notification sent: ${orderStatus} for order ${orderData.orderId}`);
+    console.log('🔔 === CUSTOMER ORDER NOTIFICATION DEBUG END ===');
+    
+    return notification;
+  } catch (error) {
+    console.error('❌ Customer order notification failed:', error);
+    console.error('❌ Error details:', {
+      message: error.message,
+      stack: error.stack
+    });
+    console.log('🔔 === CUSTOMER ORDER NOTIFICATION DEBUG END ===');
+    throw error;
   }
-  const notification = new Notification({
-    userId: customerId,
-    type,
-    title: `Order ${orderStatus}`,
-    message: `Your order status is now ${orderStatus}.`,
-    data: orderData,
-    read: false,
-  });
-  await notification.save();
-  return notification;
 };
 
 // Customer Payment Notifications
