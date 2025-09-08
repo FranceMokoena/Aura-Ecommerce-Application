@@ -32,57 +32,27 @@ class NotificationService {
 
   // Create seller notification for order status update
   static async createSellerOrderStatusNotification(sellerId, orderData, newStatus, oldStatus) {
-    try {
-      let title, message;
-      
-      switch (newStatus) {
-        case 'paid':
-          title = '💰 Payment Received';
-          message = `Order #${orderData.orderId.slice(-6)} has been paid. Total: ${orderData.totalAmount}`;
-          break;
-        case 'confirmed':
-          title = '✅ Order Confirmed';
-          message = `Order #${orderData.orderId.slice(-6)} has been confirmed by customer`;
-          break;
-        case 'shipped':
-          title = '🚚 Order Shipped';
-          message = `Order #${orderData.orderId.slice(-6)} has been marked as shipped`;
-          break;
-        case 'delivered':
-          title = '🎉 Order Delivered';
-          message = `Order #${orderData.orderId.slice(-6)} has been delivered successfully`;
-          break;
-        case 'cancelled':
-          title = '❌ Order Cancelled';
-          message = `Order #${orderData.orderId.slice(-6)} has been cancelled`;
-          break;
-        default:
-          title = '📝 Order Updated';
-          message = `Order #${orderData.orderId.slice(-6)} status changed from ${oldStatus} to ${newStatus}`;
-      }
-
-      const notification = new Notification({
-        userId: sellerId,
-        title,
-        message,
-        type: 'seller_order_update',
-        priority: newStatus === 'cancelled' ? 'urgent' : 'normal',
-        data: {
-          orderId: orderData.orderId,
-          oldStatus,
-          newStatus,
-          totalAmount: orderData.totalAmount,
-          action: 'view_order'
-        }
-      });
-
-      await notification.save();
-      console.log(`✅ Seller notification created for order status update: ${orderData.orderId}`);
-      return notification;
-    } catch (error) {
-      console.error('❌ Error creating seller order status notification:', error);
-      throw error;
+    let type;
+    switch (newStatus) {
+      case 'cancelled':
+        type = 'order_cancelled';
+        break;
+      case 'completed':
+        type = 'order_completed';
+        break;
+      default:
+        type = 'order_update';
     }
+    const notification = new Notification({
+      userId: sellerId,
+      type,
+      title: `Order ${newStatus}`,
+      message: `Order status changed from ${oldStatus} to ${newStatus}.`,
+      data: orderData,
+      read: false,
+    });
+    await notification.save();
+    return notification;
   }
 
   // Create seller notification for payment received
@@ -166,52 +136,33 @@ class NotificationService {
 
   // Create customer notification for order status update
   static async createCustomerOrderStatusNotification(customerId, orderData, newStatus, oldStatus) {
-    try {
-      let title, message;
-      
-      switch (newStatus) {
-        case 'confirmed':
-          title = '✅ Order Confirmed';
-          message = `Your order #${orderData.orderId.slice(-6)} has been confirmed by the seller`;
-          break;
-        case 'shipped':
-          title = '🚚 Order Shipped';
-          message = `Your order #${orderData.orderId.slice(-6)} has been shipped and is on its way`;
-          break;
-        case 'delivered':
-          title = '🎉 Order Delivered';
-          message = `Your order #${orderData.orderId.slice(-6)} has been delivered successfully`;
-          break;
-        case 'cancelled':
-          title = '❌ Order Cancelled';
-          message = `Your order #${orderData.orderId.slice(-6)} has been cancelled`;
-          break;
-        default:
-          title = '📝 Order Updated';
-          message = `Your order #${orderData.orderId.slice(-6)} status has been updated`;
-      }
-
-      const notification = new Notification({
-        userId: customerId,
-        title,
-        message,
-        type: 'customer_order',
-        priority: newStatus === 'cancelled' ? 'urgent' : 'normal',
-        data: {
-          orderId: orderData.orderId,
-          oldStatus,
-          newStatus,
-          action: 'view_order'
-        }
-      });
-
-      await notification.save();
-      console.log(`✅ Customer notification created for order status update: ${orderData.orderId}`);
-      return notification;
-    } catch (error) {
-      console.error('❌ Error creating customer order status notification:', error);
-      throw error;
+    let type;
+    switch (newStatus) {
+      case 'confirmed':
+        type = 'order_confirmed';
+        break;
+      case 'shipped':
+        type = 'order_shipped';
+        break;
+      case 'delivered':
+        type = 'order_delivered';
+        break;
+      case 'cancelled':
+        type = 'order_cancelled';
+        break;
+      default:
+        type = 'order_update';
     }
+    const notification = new Notification({
+      userId: customerId,
+      type,
+      title: `Order ${newStatus}`,
+      message: `Your order status changed from ${oldStatus} to ${newStatus}.`,
+      data: orderData,
+      read: false,
+    });
+    await notification.save();
+    return notification;
   }
 
   // Create customer notification for payment confirmation

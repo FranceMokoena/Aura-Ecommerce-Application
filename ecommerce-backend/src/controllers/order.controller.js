@@ -662,37 +662,34 @@ const updateOrderStatus = async (req, res) => {
       // Don't fail the main order update if notification fails
     }
 
-    // 📱 SELLER NOTIFICATION - Send notification to seller about their action
+    // 📱 CUSTOMER IN-APP NOTIFICATION - Create in-app notification for customer
     try {
-      const sellerOrderData = {
+      const customerOrderData = {
         orderId: order._id.toString(),
         orderNumber: order.orderNumber || `#${order._id.toString().slice(-6)}`,
         totalAmount: order.totalAmount,
-        customerName: order.customerId?.name || 'Customer',
-        itemsCount: order.products?.length || 0,
         status: status
       };
       
-      // Create a seller notification about their own action
+      // Create a customer notification about the status update
       const notification = new Notification({
-        userId: order.sellerId.toString(),
+        userId: order.customerId.toString(),
         title: `Order Status Updated`,
-        message: `You have updated order #${sellerOrderData.orderNumber} to ${status}`,
-        type: 'seller_order_updated',
+        message: `Your order #${customerOrderData.orderNumber} status has been updated to ${status}`,
+        type: 'customer_order_updated',
         data: {
           orderId: order._id.toString(),
-          orderNumber: sellerOrderData.orderNumber,
+          orderNumber: customerOrderData.orderNumber,
           status: status,
-          customerName: sellerOrderData.customerName,
-          totalAmount: sellerOrderData.totalAmount
+          totalAmount: customerOrderData.totalAmount
         },
         priority: 'normal'
       });
       
       await notification.save();
-      console.log('✅ Seller order update notification created successfully');
-    } catch (sellerNotificationError) {
-      console.error('⚠️ Seller notification error (non-critical):', sellerNotificationError);
+      console.log('✅ Customer order update notification created successfully');
+    } catch (customerNotificationError) {
+      console.error('⚠️ Customer notification error (non-critical):', customerNotificationError);
       // Don't fail the main order update if notification fails
     }
     

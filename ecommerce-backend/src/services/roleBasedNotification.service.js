@@ -12,60 +12,33 @@ const Notification = require('../models/Notification');
 
 // Customer Order Status Notifications
 const sendCustomerOrderNotification = async (customerId, orderStatus, orderData) => {
-  try {
-    const customer = await User.findById(customerId);
-    if (!customer || !customer.pushToken) return;
-
-    const statusMessages = {
-      'pending': 'Your order has been placed and is pending confirmation! 📋',
-      'confirmed': 'Your order has been confirmed! 🎉',
-      'processing': 'Your order is being processed! ⚙️',
-      'shipped': 'Your order has been shipped! 📦',
-      'out_for_delivery': 'Your order is out for delivery! 🚚',
-      'delivered': 'Your order has been delivered! 🎯',
-      'cancelled': 'Your order has been cancelled ❌',
-      'refunded': 'Your refund has been processed! 💰',
-      'returned': 'Your return has been processed! 📦'
-    };
-
-    const message = statusMessages[orderStatus] || 'Your order status has been updated!';
-
-    // Send push notification
-    await sendPushNotification(customer.pushToken, {
-      title: 'Order Update',
-      message: message,
-      data: {
-        type: 'customer_order',
-        orderId: orderData.orderId,
-        status: orderStatus,
-        orderNumber: orderData.orderNumber,
-        totalAmount: orderData.totalAmount
-      }
-    });
-
-    // Store notification in database
-    const notification = new Notification({
-      userId: customerId,
-      title: 'Order Update',
-      message: message,
-      type: 'customer_order',
-      data: {
-        orderId: orderData.orderId,
-        status: orderStatus,
-        orderNumber: orderData.orderNumber,
-        totalAmount: orderData.totalAmount
-      },
-      priority: 'normal'
-    });
-
-    await notification.save();
-    console.log('✅ Notification stored in database for customer');
-
-    console.log(`✅ Customer order notification sent: ${orderStatus} for order ${orderData.orderId}`);
-
-  } catch (error) {
-    console.error('❌ Customer order notification failed:', error);
+  let type;
+  switch (orderStatus) {
+    case 'confirmed':
+      type = 'order_confirmed';
+      break;
+    case 'shipped':
+      type = 'order_shipped';
+      break;
+    case 'delivered':
+      type = 'order_delivered';
+      break;
+    case 'cancelled':
+      type = 'order_cancelled';
+      break;
+    default:
+      type = 'order_update';
   }
+  const notification = new Notification({
+    userId: customerId,
+    type,
+    title: `Order ${orderStatus}`,
+    message: `Your order status is now ${orderStatus}.`,
+    data: orderData,
+    read: false,
+  });
+  await notification.save();
+  return notification;
 };
 
 // Customer Payment Notifications
