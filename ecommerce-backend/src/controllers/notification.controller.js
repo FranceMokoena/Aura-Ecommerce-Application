@@ -402,25 +402,41 @@ exports.getSellerNotifications = async (req, res) => {
 
 // Get customer notifications
 exports.getCustomerNotifications = async (req, res) => {
-  const notifications = await Notification.find({
-    userId: req.user._id,
-    type: { $in: [
-      'order_confirmed', 'order_shipped', 'order_delivered', 'order_cancelled',
-      'payment_confirmed', 'refund_processed', 'product_available', 'promotion_offer'
-    ]}
-  }).sort({ createdAt: -1 });
-  // Map _id to id for frontend
-  const mapped = notifications.map(n => ({
-    id: n._id,
-    type: n.type,
-    title: n.title,
-    message: n.message,
-    data: n.data,
-    read: n.read,
-    createdAt: n.createdAt,
-    // ...other fields...
-  }));
-  res.json(mapped);
+  try {
+    const userId = req.user._id;
+    
+    const notifications = await Notification.find({
+      userId: userId,
+      type: { $in: [
+        'order_confirmed', 'order_shipped', 'order_delivered', 'order_cancelled',
+        'payment_confirmed', 'refund_processed', 'product_available', 'promotion_offer'
+      ]}
+    }).sort({ createdAt: -1 });
+
+    // Get unread count
+    const unreadCount = await Notification.countDocuments({ 
+      userId: userId, 
+      read: false,
+      type: { $in: [
+        'order_confirmed', 'order_shipped', 'order_delivered', 'order_cancelled',
+        'payment_confirmed', 'refund_processed', 'product_available', 'promotion_offer'
+      ]}
+    });
+
+    res.json({
+      success: true,
+      notifications,
+      unreadCount,
+      total: notifications.length
+    });
+  } catch (error) {
+    console.error('Error fetching customer notifications:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch customer notifications',
+      error: error.message
+    });
+  }
 };
 
 // Get seeker notifications
