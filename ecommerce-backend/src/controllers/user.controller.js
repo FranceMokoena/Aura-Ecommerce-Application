@@ -566,5 +566,78 @@ module.exports = {
   upload, // Export multer upload middleware
   getUserById,
   updateUserById,
-  debugPushTokens
+  debugPushTokens,
+  // Device token management
+  async registerDevice(req, res) {
+    try {
+      const userId = req.user?.id || req.user?._id;
+      const { deviceId, platform = 'unknown', pushToken } = req.body;
+
+      console.log('🔔 registerDevice called:', { userId, deviceId, platform, hasToken: !!pushToken });
+
+      if (!pushToken) {
+        return res.status(400).json({ success: false, message: 'pushToken is required' });
+      }
+
+      const user = await User.findById(userId);
+      if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+      // Ensure devices array exists
+      user.devices = Array.isArray(user.devices) ? user.devices : [];
+
+      // Upsert by deviceId if provided, otherwise by token
+      const index = deviceId
+        ? user.devices.findIndex(d => d.deviceId === deviceId)
+        : user.devices.findIndex(d => d.pushToken === pushToken);
+
+      const now = new Date();
+      if (index >= 0) {
+        user.devices[index].pushToken = pushToken;
+        user.devices[index].platform = platform || user.devices[index].platform || 'unknown';
+        user.devices[index].lastSeenAt = now;
+        user.devices[index].active = true;
+      } else {
+        user.devices.push({ deviceId, platform, pushToken, lastSeenAt: now, active: true });
+      }
+
+      // Keep legacy field in sync with latest token
+      user.pushToken = pushToken;
+
+      await user.save();
+
+      return res.json({ success: true, message: 'Device registered', devices: user.devices });
+    } catch (error) {
+      console.error('❌ registerDevice error:', error);
+      return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+  },
+
+  async unregisterDevice(req, res) {
+    try {
+      const userId = req.user?.id || req.user?._id;
+      const { deviceId, pushToken } = req.body;
+
+      console.log('🔔 unregisterDevice called:', { userId, deviceId, hasToken: !!pushToken });
+
+      const user = await User.findById(userId);
+      if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+      user.devices = (user.devices || []).map(d => {
+        const match = (deviceId && d.deviceId === deviceId) || (pushToken && d.pushToken === pushToken);
+        return match ? { ...d.toObject?.() || d, active: false } : d;
+      });
+
+      // If legacy pushToken matches removed token, clear it
+      if (pushToken && user.pushToken === pushToken) {
+        user.pushToken = undefined;
+      }
+
+      await user.save();
+
+      return res.json({ success: true, message: 'Device unregistered', devices: user.devices });
+    } catch (error) {
+      console.error('❌ unregisterDevice error:', error);
+      return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+  }
 };

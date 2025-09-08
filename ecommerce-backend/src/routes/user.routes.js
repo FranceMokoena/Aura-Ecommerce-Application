@@ -15,6 +15,10 @@ router.put('/me/profile', userController.updateCurrentUserProfile);
 // Update push token for notifications
 router.put('/me/push-token', userController.updatePushToken);
 
+// Register/unregister device tokens
+router.post('/me/devices/register', userController.registerDevice);
+router.post('/me/devices/unregister', userController.unregisterDevice);
+
 // Debug endpoint to check push token status (for development only)
 router.get('/debug/push-tokens', userController.debugPushTokens);
 

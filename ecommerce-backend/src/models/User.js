@@ -38,6 +38,14 @@ const userSchema = new mongoose.Schema({
   },
   // Push notification token for FCM
   pushToken: { type: String },
+  // Multi-device support: track multiple device tokens
+  devices: [{
+    deviceId: { type: String },
+    platform: { type: String, enum: ['android', 'ios', 'web', 'unknown'], default: 'unknown' },
+    pushToken: { type: String },
+    lastSeenAt: { type: Date, default: Date.now },
+    active: { type: Boolean, default: true }
+  }],
   // Notification settings
   notificationSettings: {
     pushNotifications: { type: Boolean, default: true },

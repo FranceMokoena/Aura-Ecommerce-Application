@@ -1,4 +1,4 @@
-const { sendPushNotification, sendBulkPushNotifications } = require('./pushNotification.service');
+const { sendPushNotification, sendBulkPushNotifications, sendToUserDevices } = require('./pushNotification.service');
 const User = require('../models/User');
 const Order = require('../models/Order');
 const Service = require('../models/Service');
@@ -66,30 +66,18 @@ const sendCustomerOrderNotification = async (customerId, orderStatus, orderData)
         message = `Your order status has been updated to ${orderStatus}`;
     }
 
-    // Send push notification if user has push token
-    if (customer.pushToken) {
-      console.log('🔔 Sending push notification to customer:', { 
-        customerId, 
-        customerName: customer.name,
-        pushToken: `${customer.pushToken.substring(0, 20)}...` 
-      });
-      
-      await sendPushNotification(customer.pushToken, {
-        title: title,
-        message: message,
-        data: {
-          type: type,
-          orderId: orderData.orderId,
-          orderNumber: orderData.orderNumber,
-          status: orderStatus,
-          totalAmount: orderData.totalAmount
-        }
-      });
-      
-      console.log('✅ Push notification sent to customer successfully');
-    } else {
-      console.log('⚠️ Customer has no push token, skipping push notification');
-    }
+    const pushResult = await sendToUserDevices(customerId, {
+      title,
+      message,
+      data: {
+        type,
+        orderId: orderData.orderId,
+        orderNumber: orderData.orderNumber,
+        status: orderStatus,
+        totalAmount: orderData.totalAmount
+      }
+    });
+    console.log('🔔 Customer push send result:', pushResult);
 
     // Store notification in database
     const notification = new Notification({
@@ -314,7 +302,7 @@ const sendSellerNewOrderNotification = async (sellerId, orderData) => {
       return;
     }
     
-    if (!seller.pushToken) {
+    if (!seller.pushToken && !(seller.devices && seller.devices.length)) {
       console.error('❌ Seller has no push token:', { 
         sellerId, 
         sellerName: seller.name,
@@ -325,14 +313,7 @@ const sendSellerNewOrderNotification = async (sellerId, orderData) => {
       return;
     }
 
-    console.log('🔔 Sending push notification to seller:', { 
-      sellerId, 
-      sellerName: seller.name,
-      pushToken: `${seller.pushToken.substring(0, 20)}...` 
-    });
-    
-    // Send push notification
-    await sendPushNotification(seller.pushToken, {
+    const pushResult = await sendToUserDevices(sellerId, {
       title: '🆕 New Order Received!',
       message: `New order #${orderData.orderNumber} worth R${orderData.totalAmount}`,
       data: {
@@ -344,6 +325,7 @@ const sendSellerNewOrderNotification = async (sellerId, orderData) => {
         itemsCount: orderData.itemsCount
       }
     });
+    console.log('🔔 Seller push send result:', pushResult);
 
     // Store notification in database
     const notification = new Notification({

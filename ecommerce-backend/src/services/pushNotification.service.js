@@ -397,9 +397,35 @@ const testPushNotification = async (token) => {
   }
 };
 
+// Helper: send to all active devices for a userId
+const sendToUserDevices = async (userId, notification) => {
+  const user = await User.findById(userId, 'pushToken devices');
+  if (!user) return { successCount: 0, failureCount: 0 };
+
+  const tokens = [];
+  if (user.pushToken) tokens.push(user.pushToken);
+  if (Array.isArray(user.devices)) {
+    for (const d of user.devices) {
+      if (d && d.active !== false && d.pushToken) tokens.push(d.pushToken);
+    }
+  }
+
+  // De-duplicate tokens
+  const unique = Array.from(new Set(tokens));
+  if (unique.length === 0) return { successCount: 0, failureCount: 0 };
+
+  try {
+    const result = await sendBulkPushNotifications(unique, notification);
+    return result;
+  } catch (e) {
+    return { successCount: 0, failureCount: unique.length, error: e?.message };
+  }
+};
+
 module.exports = {
   sendPushNotification,
   sendBulkPushNotifications,
+  sendToUserDevices,
   sendNotificationToAllUsers,
   sendNotificationToUsersByCriteria,
   sendOrderStatusNotification,
