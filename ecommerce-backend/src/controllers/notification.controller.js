@@ -1,554 +1,468 @@
-const Notification = require('../models/Notification');
+const { sendPushNotification, sendToUserDevices } = require('../services/pushNotification.service');
 const User = require('../models/User');
-const { sendPushNotification, testPushNotification } = require('../services/pushNotification.service');
+const Notification = require('../models/Notification');
+const { validateNotificationData, validateSellerNewOrderNotification, validateCustomerOrderStatusNotification, validateBulkNotification, handleValidationErrors } = require('../middlewares/notificationValidation.middleware');
 
-// Get all notifications for a user
-exports.getNotifications = async (req, res) => {
+// Send push notification to specific user (for frontend to trigger)
+const sendPushToUser = async (req, res) => {
   try {
-    const { page = 1, limit = 20, type, read } = req.query;
-    const userId = req.user.id;
+    const { targetUserId, title, message, data, type } = req.body;
+    const senderId = req.user._id;
 
-    // Build query
-    const query = { userId };
-    if (type) query.type = type;
-    if (read !== undefined) query.read = read === 'true';
+    console.log('🔔 sendPushToUser called:', { targetUserId, title, message, type, senderId });
 
-    // Calculate pagination
-    const skip = (page - 1) * limit;
-
-    // Get notifications with pagination
-    const notifications = await Notification.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .populate('userId', 'name email');
-
-    // Get total count for pagination
-    const total = await Notification.countDocuments(query);
-
-    // Get unread count
-    const unreadCount = await Notification.countDocuments({ userId, read: false });
-
-    res.json({
-      success: true,
-      notifications,
-      pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / limit),
-        totalItems: total,
-        itemsPerPage: parseInt(limit)
-      },
-      unreadCount
-    });
-
-  } catch (error) {
-    console.error('Error fetching notifications:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch notifications',
-      error: error.message
-    });
-  }
-};
-
-// Get unread notifications count
-exports.getUnreadCount = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const unreadCount = await Notification.countDocuments({ userId, read: false });
-
-    res.json({
-      success: true,
-      unreadCount
-    });
-
-  } catch (error) {
-    console.error('Error getting unread count:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get unread count',
-      error: error.message
-    });
-  }
-};
-
-// Mark notification as read
-exports.markAsRead = async (req, res) => {
-  try {
-    const { notificationId } = req.params;
-    const userId = req.user.id;
-
-    const notification = await Notification.findOne({ _id: notificationId, userId });
-    
-    if (!notification) {
-      return res.status(404).json({
-        success: false,
-        message: 'Notification not found'
+    if (!targetUserId || !title || !message) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'targetUserId, title, and message are required' 
       });
     }
 
-    notification.read = true;
-    await notification.save();
-
-    res.json({
-      success: true,
-      message: 'Notification marked as read',
-      notification
-    });
-
-  } catch (error) {
-    console.error('Error marking notification as read:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to mark notification as read',
-      error: error.message
-    });
-  }
-};
-
-// Mark all notifications as read
-exports.markAllAsRead = async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    const result = await Notification.updateMany(
-      { userId, read: false },
-      { read: true }
-    );
-
-    res.json({
-      success: true,
-      message: 'All notifications marked as read',
-      updatedCount: result.modifiedCount
-    });
-
-  } catch (error) {
-    console.error('Error marking all notifications as read:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to mark all notifications as read',
-      error: error.message
-    });
-  }
-};
-
-// Delete a notification
-exports.deleteNotification = async (req, res) => {
-  try {
-    const { notificationId } = req.params;
-    const userId = req.user.id;
-
-    const notification = await Notification.findOneAndDelete({ _id: notificationId, userId });
-    
-    if (!notification) {
-      return res.status(404).json({
-        success: false,
-        message: 'Notification not found'
+    // Verify target user exists
+    const targetUser = await User.findById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Target user not found' 
       });
     }
 
-    res.json({
-      success: true,
-      message: 'Notification deleted successfully'
-    });
-
-  } catch (error) {
-    console.error('Error deleting notification:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete notification',
-      error: error.message
-    });
-  }
-};
-
-// Clear all notifications for a user
-exports.clearNotifications = async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    const result = await Notification.deleteMany({ userId });
-
-    res.json({
-      success: true,
-      message: 'All notifications cleared successfully',
-      deletedCount: result.deletedCount
-    });
-
-  } catch (error) {
-    console.error('Error clearing notifications:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to clear notifications',
-      error: error.message
-    });
-  }
-};
-
-// Create a new notification
-exports.createNotification = async (req, res) => {
-  try {
-    const { userId, type, title, message, data, priority = 'normal' } = req.body;
-
-    // Validate required fields
-    if (!userId || !type || !title || !message) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields: userId, type, title, message'
-      });
-    }
-
-    // Check if user exists
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    // Create notification
-    const notification = new Notification({
-      userId,
-      type,
+    // Send push notification
+    const pushResult = await sendToUserDevices(targetUserId, {
       title,
       message,
-      data,
-      priority,
-      read: false
+      data: {
+        ...data,
+        type: type || 'general',
+        senderId: senderId.toString(),
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    console.log('🔔 Push notification result:', pushResult);
+
+    // Store notification in database
+    const notification = new Notification({
+      userId: targetUserId,
+      type: type || 'general',
+      title,
+      message,
+      data: {
+        ...data,
+        senderId: senderId.toString(),
+        orderId: data?.orderId,
+        serviceId: data?.serviceId,
+        productId: data?.productId
+      },
+      read: false,
+      priority: 'normal'
     });
 
     await notification.save();
 
-    // Send push notification if user has push token
-    if (user.pushToken) {
+    res.json({
+      success: true,
+      message: 'Push notification sent successfully',
+      pushResult,
+      notificationId: notification._id
+    });
+
+  } catch (error) {
+    console.error('❌ Error sending push notification:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to send push notification',
+      error: error.message 
+    });
+  }
+};
+
+// Send push notification to multiple users
+const sendPushToMultipleUsers = async (req, res) => {
+  try {
+    const { targetUserIds, title, message, data, type } = req.body;
+    const senderId = req.user._id;
+
+    console.log('🔔 sendPushToMultipleUsers called:', { 
+      targetUserIds: targetUserIds?.length, 
+      title, 
+      message, 
+      type, 
+      senderId 
+    });
+
+    if (!targetUserIds || !Array.isArray(targetUserIds) || targetUserIds.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'targetUserIds array is required' 
+      });
+    }
+
+    if (!title || !message) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'title and message are required' 
+      });
+    }
+
+    const results = [];
+    const errors = [];
+
+    // Send to each user
+    for (const targetUserId of targetUserIds) {
       try {
-        await sendPushNotification(user.pushToken, {
+        // Verify user exists
+        const targetUser = await User.findById(targetUserId);
+        if (!targetUser) {
+          errors.push({ userId: targetUserId, error: 'User not found' });
+          continue;
+        }
+
+        // Send push notification
+        const pushResult = await sendToUserDevices(targetUserId, {
           title,
-          body: message,
+          message,
           data: {
-            notificationId: notification._id.toString(),
-            type,
-            ...data
+            ...data,
+            type: type || 'general',
+            senderId: senderId.toString(),
+            timestamp: new Date().toISOString()
           }
         });
-      } catch (pushError) {
-        console.error('Push notification failed:', pushError);
-        // Don't fail the request if push notification fails
+
+        // Store notification in database
+        const notification = new Notification({
+          userId: targetUserId,
+          type: type || 'general',
+          title,
+          message,
+          data: {
+            ...data,
+            senderId: senderId.toString()
+          },
+          read: false,
+          priority: 'normal'
+        });
+
+        await notification.save();
+
+        results.push({
+          userId: targetUserId,
+          success: true,
+          pushResult,
+          notificationId: notification._id
+        });
+
+      } catch (error) {
+        console.error(`❌ Error sending to user ${targetUserId}:`, error);
+        errors.push({ 
+          userId: targetUserId, 
+          error: error.message 
+        });
       }
     }
-
-    res.status(201).json({
-      success: true,
-      message: 'Notification created successfully',
-      notification
-    });
-
-  } catch (error) {
-    console.error('Error creating notification:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create notification',
-      error: error.message
-    });
-  }
-};
-
-// Create a system notification (admin only)
-exports.createSystemNotification = async (req, res) => {
-  try {
-    const { userIds, type, title, message, data, priority = 'normal' } = req.body;
-
-    // Validate required fields
-    if (!userIds || !Array.isArray(userIds) || userIds.length === 0 || !type || !title || !message) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields: userIds (array), type, title, message'
-      });
-    }
-
-    // Check if all users exist
-    const users = await User.find({ _id: { $in: userIds } });
-    if (users.length !== userIds.length) {
-      return res.status(400).json({
-        success: false,
-        message: 'Some users not found'
-      });
-    }
-
-    // Create notifications for all users
-    const notifications = [];
-    const pushPromises = [];
-
-    for (const userId of userIds) {
-      const notification = new Notification({
-        userId,
-        type,
-        title,
-        message,
-        data,
-        priority,
-        read: false,
-        isSystem: true
-      });
-
-      notifications.push(notification);
-
-      // Prepare push notification if user has push token
-      const user = users.find(u => u._id.toString() === userId);
-      if (user && user.pushToken) {
-        pushPromises.push(
-          sendPushNotification(user.pushToken, {
-            title,
-            body: message,
-            data: {
-              notificationId: notification._id.toString(),
-              type,
-              isSystem: true,
-              ...data
-            }
-          }).catch(error => {
-            console.error(`Push notification failed for user ${userId}:`, error);
-            return null; // Don't fail the entire operation
-          })
-        );
-      }
-    }
-
-    // Save all notifications
-    await Notification.insertMany(notifications);
-
-    // Send push notifications (don't wait for them to complete)
-    Promise.all(pushPromises).catch(error => {
-      console.error('Some push notifications failed:', error);
-    });
-
-    res.status(201).json({
-      success: true,
-      message: 'System notifications created successfully',
-      count: notifications.length
-    });
-
-  } catch (error) {
-    console.error('Error creating system notifications:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create system notifications',
-      error: error.message
-    });
-  }
-};
-
-// Get seller notifications
-exports.getSellerNotifications = async (req, res) => {
-  try {
-    const { page = 1, limit = 20, type, read } = req.query;
-    const userId = req.user.id;
-
-    // Build query for seller notifications
-    const query = { 
-      userId,
-      type: { $in: [
-        'new_order',
-        'order_cancelled',
-        'order_completed',
-        'payment_received',
-        'refund_requested',
-        'product_review',
-        'low_stock_alert'
-      ]}
-    };
-    
-    if (type) query.type = type;
-    if (read !== undefined) query.read = read === 'true';
-
-    // Calculate pagination
-    const skip = (page - 1) * limit;
-
-    // Get notifications with pagination
-    const notifications = await Notification.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .populate('userId', 'name email');
-
-    // Get total count for pagination
-    const total = await Notification.countDocuments(query);
-
-    // Get unread count
-    const unreadCount = await Notification.countDocuments({ userId, read: false });
 
     res.json({
       success: true,
-      notifications,
-      pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / limit),
-        totalItems: total,
-        itemsPerPage: parseInt(limit)
-      },
-      unreadCount
+      message: `Push notifications sent to ${results.length} users`,
+      results,
+      errors: errors.length > 0 ? errors : undefined
     });
 
   } catch (error) {
-    console.error('Error fetching seller notifications:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch seller notifications',
-      error: error.message
+    console.error('❌ Error sending bulk push notifications:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to send bulk push notifications',
+      error: error.message 
     });
   }
 };
 
-// Get customer notifications
-exports.getCustomerNotifications = async (req, res) => {
+// Send seller notification for new order (frontend trigger)
+const sendSellerNewOrderNotification = async (req, res) => {
   try {
-    const userId = req.user._id;
-    
-    const notifications = await Notification.find({
-      userId: userId,
-      type: { $in: [
-        'order_confirmed', 'order_shipped', 'order_delivered', 'order_cancelled',
-        'payment_confirmed', 'refund_processed', 'product_available', 'promotion_offer'
-      ]}
-    }).sort({ createdAt: -1 });
+    const { sellerId, orderData } = req.body;
+    const senderId = req.user._id;
 
-    // Get unread count
-    const unreadCount = await Notification.countDocuments({ 
-      userId: userId, 
+    console.log('🔔 sendSellerNewOrderNotification called:', { sellerId, orderData, senderId });
+
+    if (!sellerId || !orderData) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'sellerId and orderData are required' 
+      });
+    }
+
+    // Verify seller exists
+    const seller = await User.findById(sellerId);
+    if (!seller) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Seller not found' 
+      });
+    }
+
+    const notification = {
+      title: '🛒 New Order Received!',
+      message: `You have a new order for ${orderData.products?.length || 1} product(s) worth R${orderData.totalAmount || 0}`,
+      data: {
+        type: 'seller_order',
+        orderId: orderData._id || orderData.id,
+        sellerId,
+        customerName: orderData.customerId?.name || 'Customer',
+        totalAmount: orderData.totalAmount,
+        productCount: orderData.products?.length || 1,
+        senderId: senderId.toString(),
+        timestamp: new Date().toISOString()
+      }
+    };
+
+    // Send push notification
+    const pushResult = await sendToUserDevices(sellerId, notification);
+
+    // Store notification in database
+    const dbNotification = new Notification({
+      userId: sellerId,
+      type: 'seller_order', // FIXED: Match frontend type
+      title: notification.title,
+      message: notification.message,
+      data: notification.data,
       read: false,
-      type: { $in: [
-        'order_confirmed', 'order_shipped', 'order_delivered', 'order_cancelled',
-        'payment_confirmed', 'refund_processed', 'product_available', 'promotion_offer'
-      ]}
+      priority: 'high'
     });
+
+    await dbNotification.save();
 
     res.json({
       success: true,
-      notifications,
-      unreadCount,
-      total: notifications.length
+      message: 'Seller notification sent successfully',
+      pushResult,
+      notificationId: dbNotification._id
     });
+
   } catch (error) {
-    console.error('Error fetching customer notifications:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch customer notifications',
-      error: error.message
+    console.error('❌ Error sending seller new order notification:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to send seller notification',
+      error: error.message 
     });
   }
 };
 
-// Get seeker notifications
-exports.getSeekerNotifications = async (req, res) => {
+// Send customer notification for order status update (frontend trigger)
+const sendCustomerOrderStatusNotification = async (req, res) => {
   try {
-    const { page = 1, limit = 20, type, read } = req.query;
-    const userId = req.user.id;
+    const { customerId, orderId, status, orderDetails } = req.body;
+    const senderId = req.user._id;
 
-    // Build query for seeker notifications
-    const query = { 
-      userId,
-      type: { $in: [
-        'seeker_new_booking',
-        'seeker_booking_confirmed',
-        'seeker_booking_cancelled',
-        'seeker_service_completed'
-      ]}
+    console.log('🔔 sendCustomerOrderStatusNotification called:', { 
+      customerId, 
+      orderId, 
+      status, 
+      senderId 
+    });
+
+    if (!customerId || !orderId || !status) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'customerId, orderId, and status are required' 
+      });
+    }
+
+    // Verify customer exists
+    const customer = await User.findById(customerId);
+    if (!customer) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Customer not found' 
+      });
+    }
+
+    // Get status-specific title and message
+    const { title, message } = getOrderStatusNotification(status);
+
+    const notification = {
+      title,
+      message,
+      data: {
+        type: 'customer_order_status', // FIXED: Match frontend type
+        orderId,
+        status,
+        orderDetails,
+        senderId: senderId.toString(),
+        timestamp: new Date().toISOString()
+      }
     };
-    
-    if (type) query.type = type;
-    if (read !== undefined) query.read = read === 'true';
 
-    // Calculate pagination
-    const skip = (page - 1) * limit;
+    // Send push notification
+    const pushResult = await sendToUserDevices(customerId, notification);
 
-    // Get notifications with pagination
-    const notifications = await Notification.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .populate('userId', 'name email');
+    // Store notification in database
+    const dbNotification = new Notification({
+      userId: customerId,
+      type: 'customer_order_status', // FIXED: Match frontend type
+      title: notification.title,
+      message: notification.message,
+      data: notification.data,
+      read: false,
+      priority: 'normal'
+    });
 
-    // Get total count for pagination
-    const total = await Notification.countDocuments(query);
-
-    // Get unread count
-    const unreadCount = await Notification.countDocuments({ userId, read: false });
+    await dbNotification.save();
 
     res.json({
       success: true,
-      notifications,
-      pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / limit),
-        totalItems: total,
-        itemsPerPage: parseInt(limit)
-      },
-      unreadCount
+      message: 'Customer order status notification sent successfully',
+      pushResult,
+      notificationId: dbNotification._id
     });
 
   } catch (error) {
-    console.error('Error fetching seeker notifications:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch seeker notifications',
-      error: error.message
+    console.error('❌ Error sending customer order status notification:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to send customer notification',
+      error: error.message 
     });
   }
 };
 
-// Test push notification for current user
-exports.testPushNotification = async (req, res) => {
+// Helper function to get order status notification content
+const getOrderStatusNotification = (status) => {
+  switch (status.toLowerCase()) {
+    case 'shipped':
+      return {
+        title: '🚚 Order Shipped!',
+        message: 'Your order has been shipped! Start tracking it now'
+      };
+    case 'delivered':
+      return {
+        title: '📦 Order Delivered!',
+        message: 'Your order is delivered! Thank you for shopping with Aura'
+      };
+    case 'processing':
+      return {
+        title: '⚙️ Order Processing',
+        message: 'Your order is being processed and will be shipped soon'
+      };
+    case 'out_for_delivery':
+      return {
+        title: '🚛 Out for Delivery',
+        message: 'Your order is out for delivery! It will arrive soon'
+      };
+    case 'cancelled':
+      return {
+        title: '❌ Order Cancelled',
+        message: 'Your order has been cancelled. Contact support if you have questions'
+      };
+    case 'refunded':
+      return {
+        title: '💰 Order Refunded',
+        message: 'Your order has been refunded. Check your payment method for the refund'
+      };
+    case 'confirmed':
+      return {
+        title: '✅ Order Confirmed',
+        message: 'Your order has been confirmed and is being prepared'
+      };
+    case 'preparing':
+      return {
+        title: '📋 Order Being Prepared',
+        message: 'Your order is being prepared and will be shipped soon'
+      };
+    default:
+      return {
+        title: '📋 Order Update',
+        message: `Your order status has been updated to: ${status}`
+      };
+  }
+};
+
+// Test push notification
+const testPushNotification = async (req, res) => {
   try {
-    console.log('🚨🚨🚨 TEST PUSH NOTIFICATION METHOD CALLED! 🚨🚨🚨');
-    console.log('🚨🚨🚨 This is the CORRECT method for /notifications/test endpoint 🚨🚨🚨');
-    const userId = req.user.id;
-    console.log('🧪 Testing push notification for user:', userId);
-    
-    // Get user to check if they have a push token
+    const { userId } = req.params;
     const user = await User.findById(userId);
+
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return res.status(404).json({ message: "User not found" });
     }
-    
+
     if (!user.pushToken) {
-      return res.status(400).json({
-        success: false,
-        message: 'User has no push token registered',
-        hasPushToken: false
+      return res.status(400).json({ 
+        message: "User has no push token registered",
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          hasPushToken: false
+        }
       });
     }
-    
-    console.log('🧪 User has push token, testing notification...');
-    
-    // Test the push notification
+
     const result = await testPushNotification(user.pushToken);
     
-    if (result.success) {
-      res.json({
-        success: true,
-        message: 'Test push notification sent successfully',
-        hasPushToken: true,
+    res.json({
+      success: result.success,
+      message: result.message,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
         pushToken: user.pushToken.substring(0, 20) + '...' // Show first 20 chars for security
-      });
-    } else {
-      res.status(500).json({
-        success: false,
-        message: 'Test push notification failed',
-        error: result.message,
-        hasPushToken: true
-      });
-    }
-    
+      }
+    });
+
   } catch (error) {
-    console.error('❌ Error testing push notification:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to test push notification',
-      error: error.message
+    console.error('❌ Test push notification failed:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Test notification failed',
+      error: error.message 
     });
   }
+};
+
+// Get user's push token status
+const getPushTokenStatus = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const user = await User.findById(userId, 'name email pushToken devices');
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        hasPushToken: !!user.pushToken,
+        pushToken: user.pushToken ? `${user.pushToken.substring(0, 20)}...` : null,
+        devices: user.devices || [],
+        deviceCount: user.devices?.length || 0
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error getting push token status:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to get push token status',
+      error: error.message 
+    });
+  }
+};
+
+module.exports = {
+  sendPushToUser,
+  sendPushToMultipleUsers,
+  sendSellerNewOrderNotification,
+  sendCustomerOrderStatusNotification,
+  testPushNotification,
+  getPushTokenStatus
 };

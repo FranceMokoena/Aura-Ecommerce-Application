@@ -34,20 +34,26 @@ class NotificationService {
   static async createSellerOrderStatusNotification(sellerId, orderData, newStatus, oldStatus) {
     let type;
     switch (newStatus) {
+      case 'confirmed':
+        type = 'order_confirmed';
+        break;
+      case 'shipped':
+        type = 'order_shipped';
+        break;
+      case 'delivered':
+        type = 'order_delivered';
+        break;
       case 'cancelled':
         type = 'order_cancelled';
-        break;
-      case 'completed':
-        type = 'order_completed';
         break;
       default:
         type = 'order_update';
     }
     const notification = new Notification({
-      userId: sellerId,
+      userId: customerId,
       type,
       title: `Order ${newStatus}`,
-      message: `Order status changed from ${oldStatus} to ${newStatus}.`,
+      message: `Your order status changed from ${oldStatus} to ${newStatus}.`,
       data: orderData,
       read: false,
     });

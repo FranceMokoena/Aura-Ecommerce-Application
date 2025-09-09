@@ -76,20 +76,46 @@ const notificationSchema = new mongoose.Schema({
       'seeker_service_update',
       'system_maintenance',
       'security_alert',
-      'promotional'
+      'promotional',
+      
+      // Frontend-triggered notification types
+      'seller_order',                    // New order notification for sellers
+      'customer_order_status',           // Order status update for customers
+      'order_status',                    // General order status updates
+      'general',                         // General notifications
+      'test',                           // Test notifications
+      'delivery_proximity',             // Delivery proximity alerts
+      'doorstep_arrival',               // Doorstep arrival notifications
+      'delivery_attempt',               // Delivery attempt notifications
+      'booking_confirmation',           // Service booking confirmations
+      'service_booking_request',        // Service booking requests
+      'booking_status_update',          // Booking status updates
+      'service_booking_status_update'   // Service booking status updates
     ],
     required: true,
     index: true
   },
 
-  // Additional data for deep linking
+  // Additional data for deep linking and notification context
   data: {
     orderId: String,
     serviceId: String,
     productId: String,
     chatId: String,
     url: String,
-    action: String
+    action: String,
+    // New fields for enhanced notifications
+    senderId: String,
+    timestamp: String,
+    orderNumber: String,
+    totalAmount: Number,
+    customerName: String,
+    sellerName: String,
+    status: String,
+    productCount: Number,
+    itemsCount: Number,
+    // Flexible data storage
+    [String]: mongoose.Schema.Types.Mixed
   },
 
   // Notification status
