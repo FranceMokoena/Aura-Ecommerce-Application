@@ -496,7 +496,7 @@ const debugPushTokens = async (req, res) => {
     console.log('🔔 === PUSH TOKEN DEBUG START ===');
     
     // Get all users with their push token status
-    const users = await User.find({}, 'name email role pushToken createdAt');
+    const users = await User.find({}, 'name email role pushToken devices createdAt');
     
     const tokenStats = {
       totalUsers: users.length,
@@ -529,6 +529,13 @@ const debugPushTokens = async (req, res) => {
         email: user.email,
         hasToken: !!user.pushToken,
         tokenPreview: user.pushToken ? `${user.pushToken.substring(0, 20)}...` : 'NO TOKEN',
+        devicesCount: user.devices?.length || 0,
+        devices: user.devices?.map(d => ({
+          platform: d.platform,
+          hasToken: !!d.pushToken,
+          active: d.active,
+          tokenPreview: d.pushToken ? d.pushToken.substring(0, 20) + '...' : 'NO TOKEN'
+        })) || [],
         createdAt: user.createdAt
       });
       

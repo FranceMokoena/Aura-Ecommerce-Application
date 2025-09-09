@@ -66,18 +66,25 @@ const sendCustomerOrderNotification = async (customerId, orderStatus, orderData)
         message = `Your order status has been updated to ${orderStatus}`;
     }
 
-    const pushResult = await sendToUserDevices(customerId, {
-      title,
-      message,
-      data: {
-        type,
-        orderId: orderData.orderId,
-        orderNumber: orderData.orderNumber,
-        status: orderStatus,
-        totalAmount: orderData.totalAmount
-      }
-    });
-    console.log('🔔 Customer push send result:', pushResult);
+    // Try to send push notification
+    let pushResult = { successCount: 0, failureCount: 0 };
+    try {
+      pushResult = await sendToUserDevices(customerId, {
+        title,
+        message,
+        data: {
+          type,
+          orderId: orderData.orderId,
+          orderNumber: orderData.orderNumber,
+          status: orderStatus,
+          totalAmount: orderData.totalAmount
+        }
+      });
+      console.log('🔔 Customer push send result:', pushResult);
+    } catch (pushError) {
+      console.error('❌ Push notification failed:', pushError);
+      pushResult = { successCount: 0, failureCount: 1, error: pushError.message };
+    }
 
     // Store notification in database
     const notification = new Notification({

@@ -1,4 +1,7 @@
 const admin = require('firebase-admin');
+const path = require('path');
+const fs = require('fs');
+const axios = require('axios');
 const User = require('../models/User');
 
 // Initialize Firebase Admin (you'll need to add your service account key)
@@ -17,7 +20,15 @@ const initializeFirebase = () => {
       // Check for service account key file path
       if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY_PATH) {
         console.log('🔧 Loading service account from file:', process.env.FIREBASE_SERVICE_ACCOUNT_KEY_PATH);
-        const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_KEY_PATH;
+        
+        // Resolve the path relative to the project root
+        const serviceAccountPath = path.resolve(process.cwd(), process.env.FIREBASE_SERVICE_ACCOUNT_KEY_PATH);
+        console.log('🔧 Resolved service account path:', serviceAccountPath);
+        
+        // Check if file exists
+        if (!fs.existsSync(serviceAccountPath)) {
+          throw new Error(`Service account file not found at: ${serviceAccountPath}`);
+        }
         
         try {
           const serviceAccount = require(serviceAccountPath);
@@ -87,7 +98,57 @@ const initializeFirebase = () => {
   }
 };
 
-// Send push notification to a single user
+// Send Expo push notification
+const sendExpoPushNotification = async (token, notification) => {
+  try {
+    console.log('🔔 === EXPO PUSH NOTIFICATION DEBUG START ===');
+    console.log('🔧 Token type: Expo');
+    console.log('🔧 Token preview:', token.substring(0, 20) + '...');
+    console.log('🔧 Notification:', {
+      title: notification.title,
+      message: notification.message,
+      data: notification.data
+    });
+
+    const message = {
+      to: token,
+      title: notification.title,
+      body: notification.message,
+      data: notification.data,
+      sound: 'default',
+      badge: 1,
+      priority: 'high',
+      channelId: 'aura-notifications'
+    };
+
+    console.log('🔧 Expo message created:', JSON.stringify(message, null, 2));
+    console.log('🔧 Sending via Expo Push API...');
+    
+    const response = await axios.post('https://exp.host/--/api/v2/push/send', message, {
+      headers: {
+        'Accept': 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log('✅ Expo push notification sent successfully:', response.data);
+    console.log('🔔 === EXPO PUSH NOTIFICATION DEBUG END ===');
+    return response.data;
+
+  } catch (error) {
+    console.error('❌ Expo push notification failed:', error);
+    console.error('❌ Error details:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
+    console.log('🔔 === EXPO PUSH NOTIFICATION DEBUG END ===');
+    throw error;
+  }
+};
+
+// Send push notification to a single user (handles both FCM and Expo tokens)
 const sendPushNotification = async (token, notification) => {
   try {
     console.log('🔔 === PUSH NOTIFICATION DEBUG START ===');
@@ -100,6 +161,12 @@ const sendPushNotification = async (token, notification) => {
         data: notification.data
       }
     });
+
+    // Check if this is an Expo token
+    if (token && token.startsWith('ExponentPushToken[')) {
+      console.log('🔧 Detected Expo token, using Expo Push API');
+      return await sendExpoPushNotification(token, notification);
+    }
     
     if (!firebaseInitialized) {
       console.log('🔧 Firebase not initialized, initializing now...');
@@ -202,18 +269,33 @@ const sendBulkPushNotifications = async (tokens, notification) => {
       }
     };
 
-    // Send to multiple tokens
-    const response = await admin.messaging().sendMulticast({
-      tokens: tokens,
-      ...message
+    // Send to multiple tokens individually using the main sendPushNotification function
+    let successCount = 0;
+    let failureCount = 0;
+    const errors = [];
+
+    console.log(`🔧 Sending to ${tokens.length} tokens individually...`);
+    
+    for (const token of tokens) {
+      try {
+        // Use the main sendPushNotification function which handles both FCM and Expo tokens
+        await sendPushNotification(token, notification);
+        successCount++;
+        console.log(`✅ Sent to token: ${token.substring(0, 20)}...`);
+      } catch (error) {
+        failureCount++;
+        console.error(`❌ Failed to send to token ${token.substring(0, 20)}...:`, error.message);
+        errors.push({ token: token.substring(0, 20), error: error.message });
+      }
+    }
+
+    console.log('✅ Bulk push notifications completed:', {
+      successCount,
+      failureCount,
+      errors: errors.length > 0 ? errors : undefined
     });
 
-    console.log('✅ Bulk push notifications sent:', {
-      successCount: response.successCount,
-      failureCount: response.failureCount
-    });
-
-    return response;
+    return { successCount, failureCount, errors };
 
   } catch (error) {
     console.error('❌ Bulk push notifications failed:', error);
@@ -425,31 +507,65 @@ const testPushNotification = async (token) => {
 
 // Helper: send to all active devices for a userId
 const sendToUserDevices = async (userId, notification) => {
-  const user = await User.findById(userId, 'pushToken devices');
-  if (!user) return { successCount: 0, failureCount: 0 };
-
-  const tokens = [];
-  if (user.pushToken) tokens.push(user.pushToken);
-  if (Array.isArray(user.devices)) {
-    for (const d of user.devices) {
-      if (d && d.active !== false && d.pushToken) tokens.push(d.pushToken);
-    }
-  }
-
-  // De-duplicate tokens
-  const unique = Array.from(new Set(tokens));
-  if (unique.length === 0) return { successCount: 0, failureCount: 0 };
-
   try {
+    console.log(`🔔 sendToUserDevices called for user: ${userId}`);
+    console.log(`🔔 Notification data:`, {
+      title: notification.title,
+      message: notification.message,
+      type: notification.data?.type
+    });
+    
+    const user = await User.findById(userId, 'pushToken devices name');
+    if (!user) {
+      console.log('❌ User not found for push notification');
+      return { successCount: 0, failureCount: 0 };
+    }
+
+    console.log(`🔔 User found: ${user.name} (${user._id})`);
+    console.log(`🔔 User has push token: ${!!user.pushToken}`);
+    console.log(`🔔 User push token preview: ${user.pushToken ? user.pushToken.substring(0, 20) + '...' : 'NO TOKEN'}`);
+    console.log(`🔔 User devices count: ${user.devices?.length || 0}`);
+
+    const tokens = [];
+    if (user.pushToken) {
+      tokens.push(user.pushToken);
+      console.log('✅ Added legacy push token');
+    }
+    
+    if (Array.isArray(user.devices)) {
+      console.log(`🔔 Processing ${user.devices.length} devices...`);
+      for (const d of user.devices) {
+        if (d && d.active !== false && d.pushToken) {
+          tokens.push(d.pushToken);
+          console.log(`✅ Added device token: ${d.platform || 'unknown'}`);
+        } else {
+          console.log(`⚠️ Skipping device: ${d?.platform || 'unknown'} - ${!d?.pushToken ? 'no token' : 'inactive'}`);
+        }
+      }
+    }
+
+    // De-duplicate tokens
+    const unique = Array.from(new Set(tokens));
+    console.log(`🔔 Unique tokens found: ${unique.length}`);
+    
+    if (unique.length === 0) {
+      console.log('❌ No valid push tokens found');
+      return { successCount: 0, failureCount: 0 };
+    }
+
+    console.log('🔔 Attempting to send bulk push notifications...');
     const result = await sendBulkPushNotifications(unique, notification);
+    console.log(`📊 Push notification results: ${result.successCount} success, ${result.failureCount} failures`);
     return result;
   } catch (e) {
-    return { successCount: 0, failureCount: unique.length, error: e?.message };
+    console.error('❌ sendToUserDevices error:', e);
+    return { successCount: 0, failureCount: 1, error: e?.message };
   }
 };
 
 module.exports = {
   sendPushNotification,
+  sendExpoPushNotification,
   sendBulkPushNotifications,
   sendToUserDevices,
   sendNotificationToAllUsers,
