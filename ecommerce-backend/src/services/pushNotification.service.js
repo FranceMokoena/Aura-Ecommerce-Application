@@ -168,6 +168,13 @@ const sendPushNotification = async (token, notification) => {
       return await sendExpoPushNotification(token, notification);
     }
     
+    // Check if this is an FCM token (starts with specific patterns)
+    if (token && (token.startsWith('c') || token.startsWith('d') || token.startsWith('e') || token.startsWith('f'))) {
+      console.log('🔧 Detected FCM token, using Firebase Admin SDK');
+    } else {
+      console.log('🔧 Unknown token format, attempting FCM anyway');
+    }
+    
     if (!firebaseInitialized) {
       console.log('🔧 Firebase not initialized, initializing now...');
       initializeFirebase();
