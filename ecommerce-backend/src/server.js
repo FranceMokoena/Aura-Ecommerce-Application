@@ -109,6 +109,7 @@ app.use("/api/shop-orders", shopOrderRoutes);
 
 // Notification routes (NEW - SAFE ADDITION)
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/test-notifications", testNotificationRoutes);
 
 // Integrate AURA Payment System - TEMPORARILY DISABLED
 // integratePaymentSystem(app);

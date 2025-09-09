@@ -18,19 +18,45 @@ const initializeFirebase = () => {
       if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY_PATH) {
         console.log('🔧 Loading service account from file:', process.env.FIREBASE_SERVICE_ACCOUNT_KEY_PATH);
         const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_KEY_PATH;
-        const serviceAccount = require(serviceAccountPath);
         
-        console.log('🔧 Service account loaded:', {
-          project_id: serviceAccount.project_id,
-          client_email: serviceAccount.client_email
-        });
+        try {
+          const serviceAccount = require(serviceAccountPath);
         
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-          projectId: process.env.FIREBASE_PROJECT_ID || 'sacred-age-457512-c3'
-        });
-        
-        console.log('✅ Firebase Admin initialized with service account key');
+          console.log('🔧 Service account loaded:', {
+            project_id: serviceAccount.project_id,
+            client_email: serviceAccount.client_email
+          });
+          
+          admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+            projectId: process.env.FIREBASE_PROJECT_ID || 'sacred-age-457512-c3'
+          });
+          
+          firebaseInitialized = true;
+          console.log('✅ Firebase Admin initialized with service account key');
+        } catch (error) {
+          console.log('⚠️ Firebase service account file not found, trying environment variable');
+          console.log('Error details:', error.message);
+          
+          if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+            try {
+              const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+              admin.initializeApp({
+                credential: admin.credential.cert(serviceAccount),
+                projectId: process.env.FIREBASE_PROJECT_ID || 'sacred-age-457512-c3'
+              });
+              
+              firebaseInitialized = true;
+              console.log('✅ Firebase Admin initialized with environment key');
+            } catch (envError) {
+              console.log('❌ Firebase initialization failed with environment key:', envError.message);
+              firebaseInitialized = false;
+            }
+          } else {
+            console.log('❌ No Firebase credentials available');
+            firebaseInitialized = false;
+          }
+        }
       } else if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
         // Fallback: parse JSON from environment variable
         const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);

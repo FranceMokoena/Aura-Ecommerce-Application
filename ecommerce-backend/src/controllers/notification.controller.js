@@ -402,7 +402,11 @@ const testPushNotification = async (req, res) => {
       });
     }
 
-    const result = await testPushNotification(user.pushToken);
+    const result = await sendPushNotification(user.pushToken, {
+      title: 'Test Notification',
+      message: 'This is a test notification from Aura App',
+      data: { type: 'test' }
+    });
     
     res.json({
       success: result.success,
@@ -458,11 +462,357 @@ const getPushTokenStatus = async (req, res) => {
   }
 };
 
+// Get all notifications for user
+const getNotifications = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { page = 1, limit = 20, type, read } = req.query;
+    
+    const query = { userId };
+    if (type) query.type = type;
+    if (read !== undefined) query.read = read === 'true';
+    
+    const notifications = await Notification.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+    
+    const total = await Notification.countDocuments(query);
+    
+    res.json({
+      success: true,
+      notifications,
+      pagination: {
+        current: parseInt(page),
+        pages: Math.ceil(total / limit),
+        total
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error getting notifications:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to get notifications',
+      error: error.message 
+    });
+  }
+};
+
+// Get seller-specific notifications
+const getSellerNotifications = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { page = 1, limit = 20 } = req.query;
+    
+    const notifications = await Notification.find({ 
+      userId,
+      type: { $in: ['seller_order', 'seller_payment', 'seller_system'] }
+    })
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+    
+    const total = await Notification.countDocuments({ 
+      userId,
+      type: { $in: ['seller_order', 'seller_payment', 'seller_system'] }
+    });
+    
+    res.json({
+      success: true,
+      notifications,
+      pagination: {
+        current: parseInt(page),
+        pages: Math.ceil(total / limit),
+        total
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error getting seller notifications:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to get seller notifications',
+      error: error.message 
+    });
+  }
+};
+
+// Get customer-specific notifications
+const getCustomerNotifications = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { page = 1, limit = 20 } = req.query;
+    
+    const notifications = await Notification.find({ 
+      userId,
+      type: { $in: ['customer_order_status', 'customer_payment', 'customer_system'] }
+    })
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+    
+    const total = await Notification.countDocuments({ 
+      userId,
+      type: { $in: ['customer_order_status', 'customer_payment', 'customer_system'] }
+    });
+    
+    res.json({
+      success: true,
+      notifications,
+      pagination: {
+        current: parseInt(page),
+        pages: Math.ceil(total / limit),
+        total
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error getting customer notifications:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to get customer notifications',
+      error: error.message 
+    });
+  }
+};
+
+// Get unread count
+const getUnreadCount = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const count = await Notification.countDocuments({ userId, read: false });
+    
+    res.json({
+      success: true,
+      unreadCount: count
+    });
+  } catch (error) {
+    console.error('❌ Error getting unread count:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to get unread count',
+      error: error.message 
+    });
+  }
+};
+
+// Mark notification as read
+const markAsRead = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const userId = req.user._id;
+    
+    const notification = await Notification.findOneAndUpdate(
+      { _id: notificationId, userId },
+      { read: true },
+      { new: true }
+    );
+    
+    if (!notification) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Notification not found' 
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Notification marked as read',
+      notification
+    });
+  } catch (error) {
+    console.error('❌ Error marking notification as read:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to mark notification as read',
+      error: error.message 
+    });
+  }
+};
+
+// Mark all notifications as read
+const markAllAsRead = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    const result = await Notification.updateMany(
+      { userId, read: false },
+      { read: true }
+    );
+    
+    res.json({
+      success: true,
+      message: `${result.modifiedCount} notifications marked as read`,
+      modifiedCount: result.modifiedCount
+    });
+  } catch (error) {
+    console.error('❌ Error marking all notifications as read:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to mark all notifications as read',
+      error: error.message 
+    });
+  }
+};
+
+// Delete a notification
+const deleteNotification = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const userId = req.user._id;
+    
+    const notification = await Notification.findOneAndDelete({ 
+      _id: notificationId, 
+      userId 
+    });
+    
+    if (!notification) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Notification not found' 
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Notification deleted successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error deleting notification:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to delete notification',
+      error: error.message 
+    });
+  }
+};
+
+// Clear all notifications
+const clearNotifications = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    const result = await Notification.deleteMany({ userId });
+    
+    res.json({
+      success: true,
+      message: `${result.deletedCount} notifications cleared`,
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('❌ Error clearing notifications:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to clear notifications',
+      error: error.message 
+    });
+  }
+};
+
+// Create a new notification
+const createNotification = async (req, res) => {
+  try {
+    const { userId, type, title, message, data, priority = 'normal' } = req.body;
+    const senderId = req.user._id;
+    
+    if (!userId || !type || !title || !message) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'userId, type, title, and message are required' 
+      });
+    }
+    
+    const notification = new Notification({
+      userId,
+      type,
+      title,
+      message,
+      data: {
+        ...data,
+        senderId: senderId.toString(),
+        timestamp: new Date().toISOString()
+      },
+      read: false,
+      priority
+    });
+    
+    await notification.save();
+    
+    res.status(201).json({
+      success: true,
+      message: 'Notification created successfully',
+      notification
+    });
+  } catch (error) {
+    console.error('❌ Error creating notification:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to create notification',
+      error: error.message 
+    });
+  }
+};
+
+// Create system notification for all users
+const createSystemNotification = async (req, res) => {
+  try {
+    const { type, title, message, data, priority = 'normal' } = req.body;
+    const senderId = req.user._id;
+    
+    if (!type || !title || !message) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'type, title, and message are required' 
+      });
+    }
+    
+    // Get all users
+    const users = await User.find({}, '_id');
+    
+    const notifications = users.map(user => ({
+      userId: user._id,
+      type: `system_${type}`,
+      title,
+      message,
+      data: {
+        ...data,
+        senderId: senderId.toString(),
+        timestamp: new Date().toISOString()
+      },
+      read: false,
+      priority
+    }));
+    
+    const result = await Notification.insertMany(notifications);
+    
+    res.status(201).json({
+      success: true,
+      message: `System notification sent to ${result.length} users`,
+      notificationCount: result.length
+    });
+  } catch (error) {
+    console.error('❌ Error creating system notification:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to create system notification',
+      error: error.message 
+    });
+  }
+};
+
 module.exports = {
   sendPushToUser,
   sendPushToMultipleUsers,
   sendSellerNewOrderNotification,
   sendCustomerOrderStatusNotification,
   testPushNotification,
-  getPushTokenStatus
+  getPushTokenStatus,
+  getNotifications,
+  getSellerNotifications,
+  getCustomerNotifications,
+  getUnreadCount,
+  markAsRead,
+  markAllAsRead,
+  deleteNotification,
+  clearNotifications,
+  createNotification,
+  createSystemNotification
 };
