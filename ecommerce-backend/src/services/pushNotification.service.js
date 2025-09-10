@@ -512,9 +512,10 @@ const testPushNotification = async (token) => {
   }
 };
 
-// Helper: send to all active devices for a userId
+// Helper: send to all active devices for a userId - FIXED VERSION
 const sendToUserDevices = async (userId, notification) => {
   try {
+    console.log(`🔔 === SEND TO USER DEVICES START ===`);
     console.log(`🔔 sendToUserDevices called for user: ${userId}`);
     console.log(`🔔 Notification data:`, {
       title: notification.title,
@@ -522,50 +523,86 @@ const sendToUserDevices = async (userId, notification) => {
       type: notification.data?.type
     });
     
-    const user = await User.findById(userId, 'pushToken devices name');
+    // Enhanced user lookup with better error handling
+    const user = await User.findById(userId, 'pushToken devices name role email status');
     if (!user) {
-      console.log('❌ User not found for push notification');
+      console.log('❌ User not found for push notification:', userId);
       return { successCount: 0, failureCount: 0 };
     }
 
-    console.log(`🔔 User found: ${user.name} (${user._id})`);
-    console.log(`🔔 User has push token: ${!!user.pushToken}`);
+    // Check if user account is active
+    if (user.status === 'inactive' || user.status === 'suspended') {
+      console.log(`⚠️ User account is ${user.status}, skipping notification:`, user.name);
+      return { successCount: 0, failureCount: 0 };
+    }
+
+    console.log(`🔔 User found: ${user.name} (${user._id}) - Role: ${user.role}`);
+    console.log(`🔔 User status: ${user.status}`);
+    console.log(`🔔 User has legacy push token: ${!!user.pushToken}`);
     console.log(`🔔 User push token preview: ${user.pushToken ? user.pushToken.substring(0, 20) + '...' : 'NO TOKEN'}`);
     console.log(`🔔 User devices count: ${user.devices?.length || 0}`);
 
     const tokens = [];
-    if (user.pushToken) {
+    const tokenSources = [];
+
+    // Add legacy push token if it exists and is valid
+    if (user.pushToken && user.pushToken.length > 10) {
       tokens.push(user.pushToken);
+      tokenSources.push('legacy');
       console.log('✅ Added legacy push token');
     }
     
-    if (Array.isArray(user.devices)) {
+    // Process multi-device tokens
+    if (Array.isArray(user.devices) && user.devices.length > 0) {
       console.log(`🔔 Processing ${user.devices.length} devices...`);
-      for (const d of user.devices) {
-        if (d && d.active !== false && d.pushToken) {
-          tokens.push(d.pushToken);
-          console.log(`✅ Added device token: ${d.platform || 'unknown'}`);
+      
+      for (let i = 0; i < user.devices.length; i++) {
+        const device = user.devices[i];
+        
+        if (device && device.active !== false && device.pushToken && device.pushToken.length > 10) {
+          // Check if token is already added (avoid duplicates)
+          if (!tokens.includes(device.pushToken)) {
+            tokens.push(device.pushToken);
+            tokenSources.push(`device_${i}_${device.platform || 'unknown'}`);
+            console.log(`✅ Added device token: ${device.platform || 'unknown'} (${device.deviceId || 'no-id'})`);
+          } else {
+            console.log(`⚠️ Duplicate token skipped: ${device.platform || 'unknown'}`);
+          }
         } else {
-          console.log(`⚠️ Skipping device: ${d?.platform || 'unknown'} - ${!d?.pushToken ? 'no token' : 'inactive'}`);
+          console.log(`⚠️ Skipping device ${i}: ${device?.platform || 'unknown'} - ${!device?.pushToken ? 'no token' : 'inactive'}`);
         }
       }
     }
 
-    // De-duplicate tokens
+    // Log token sources for debugging
+    console.log(`🔔 Token sources: ${tokenSources.join(', ')}`);
+
+    // De-duplicate tokens (extra safety)
     const unique = Array.from(new Set(tokens));
     console.log(`🔔 Unique tokens found: ${unique.length}`);
     
     if (unique.length === 0) {
-      console.log('❌ No valid push tokens found');
+      console.log('❌ No valid push tokens found for user');
+      console.log('🔔 Debug info:', {
+        userId: user._id,
+        userName: user.name,
+        userRole: user.role,
+        hasLegacyToken: !!user.pushToken,
+        devicesCount: user.devices?.length || 0,
+        activeDevices: user.devices?.filter(d => d.active !== false).length || 0
+      });
       return { successCount: 0, failureCount: 0 };
     }
 
     console.log('🔔 Attempting to send bulk push notifications...');
     const result = await sendBulkPushNotifications(unique, notification);
     console.log(`📊 Push notification results: ${result.successCount} success, ${result.failureCount} failures`);
+    
+    console.log(`🔔 === SEND TO USER DEVICES END ===`);
     return result;
   } catch (e) {
     console.error('❌ sendToUserDevices error:', e);
+    console.error('❌ Error stack:', e.stack);
     return { successCount: 0, failureCount: 1, error: e?.message };
   }
 };

@@ -574,48 +574,110 @@ module.exports = {
   getUserById,
   updateUserById,
   debugPushTokens,
-  // Device token management
+  // Device token management - FIXED VERSION
   async registerDevice(req, res) {
     try {
       const userId = req.user?.id || req.user?._id;
       const { deviceId, platform = 'unknown', pushToken } = req.body;
 
-      console.log('🔔 registerDevice called:', { userId, deviceId, platform, hasToken: !!pushToken });
+      console.log('🔔 === REGISTER DEVICE START ===');
+      console.log('🔔 registerDevice called:', { 
+        userId, 
+        deviceId, 
+        platform, 
+        hasToken: !!pushToken,
+        tokenPreview: pushToken ? pushToken.substring(0, 20) + '...' : 'NO TOKEN'
+      });
 
+      // Validate required fields
       if (!pushToken) {
+        console.log('❌ No push token provided');
         return res.status(400).json({ success: false, message: 'pushToken is required' });
       }
 
+      if (!userId) {
+        console.log('❌ No user ID found in request');
+        return res.status(400).json({ success: false, message: 'User ID not found in request' });
+      }
+
+      // Find user with proper error handling
       const user = await User.findById(userId);
-      if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+      if (!user) {
+        console.log('❌ User not found:', userId);
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      console.log('✅ User found:', { id: user._id, name: user.name, role: user.role });
 
       // Ensure devices array exists
       user.devices = Array.isArray(user.devices) ? user.devices : [];
 
-      // Upsert by deviceId if provided, otherwise by token
-      const index = deviceId
-        ? user.devices.findIndex(d => d.deviceId === deviceId)
-        : user.devices.findIndex(d => d.pushToken === pushToken);
+      // Generate deviceId if not provided
+      const finalDeviceId = deviceId || `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      const now = new Date();
-      if (index >= 0) {
-        user.devices[index].pushToken = pushToken;
-        user.devices[index].platform = platform || user.devices[index].platform || 'unknown';
-        user.devices[index].lastSeenAt = now;
-        user.devices[index].active = true;
-      } else {
-        user.devices.push({ deviceId, platform, pushToken, lastSeenAt: now, active: true });
+      // Find existing device by deviceId or token
+      let existingDeviceIndex = -1;
+      
+      if (deviceId) {
+        existingDeviceIndex = user.devices.findIndex(d => d.deviceId === deviceId);
+      }
+      
+      // If not found by deviceId, try to find by token
+      if (existingDeviceIndex === -1) {
+        existingDeviceIndex = user.devices.findIndex(d => d.pushToken === pushToken);
       }
 
-      // Keep legacy field in sync with latest token
+      const now = new Date();
+      
+      if (existingDeviceIndex >= 0) {
+        // Update existing device
+        console.log('🔄 Updating existing device at index:', existingDeviceIndex);
+        user.devices[existingDeviceIndex].pushToken = pushToken;
+        user.devices[existingDeviceIndex].platform = platform;
+        user.devices[existingDeviceIndex].lastSeenAt = now;
+        user.devices[existingDeviceIndex].active = true;
+        user.devices[existingDeviceIndex].deviceId = finalDeviceId; // Update deviceId if changed
+      } else {
+        // Add new device
+        console.log('➕ Adding new device');
+        user.devices.push({ 
+          deviceId: finalDeviceId, 
+          platform, 
+          pushToken, 
+          lastSeenAt: now, 
+          active: true 
+        });
+      }
+
+      // Update legacy pushToken field with the latest token
       user.pushToken = pushToken;
 
+      // Save user with validation
       await user.save();
 
-      return res.json({ success: true, message: 'Device registered', devices: user.devices });
+      console.log('✅ Device registered successfully');
+      console.log('📊 Device stats:', {
+        totalDevices: user.devices.length,
+        activeDevices: user.devices.filter(d => d.active).length,
+        platforms: user.devices.map(d => d.platform)
+      });
+
+      console.log('🔔 === REGISTER DEVICE END ===');
+
+      return res.json({ 
+        success: true, 
+        message: 'Device registered successfully', 
+        devices: user.devices,
+        deviceId: finalDeviceId
+      });
     } catch (error) {
       console.error('❌ registerDevice error:', error);
-      return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+      console.error('❌ Error stack:', error.stack);
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Server error', 
+        error: error.message 
+      });
     }
   },
 

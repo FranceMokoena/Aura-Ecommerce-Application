@@ -35,6 +35,7 @@ const shopOrderRoutes = require("./routes/shopOrder.routes");
 // Notification routes (NEW - SAFE ADDITION)
 const notificationRoutes = require("./routes/notification.routes");
 const testNotificationRoutes = require("./routes/test-notification.routes");
+const testPushTokenRoutes = require("./routes/testPushToken.routes");
 
 // Import AURA Payment System - TEMPORARILY DISABLED
 // const { integratePaymentSystem } = require("./payment-system/integration");
@@ -110,6 +111,15 @@ app.use("/api/shop-orders", shopOrderRoutes);
 // Notification routes (NEW - SAFE ADDITION)
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/test-notifications", testNotificationRoutes);
+app.use("/api/test-push-tokens", testPushTokenRoutes);
+
+// Debug: Log that test push token routes are registered
+console.log("🔔 Test push token routes registered at /api/test-push-tokens");
+
+// Add a simple test route to verify registration
+app.get("/api/test-push-tokens/debug", (req, res) => {
+  res.json({ message: "Test push token routes are working!", timestamp: new Date().toISOString() });
+});
 
 // Integrate AURA Payment System - TEMPORARILY DISABLED
 // integratePaymentSystem(app);
